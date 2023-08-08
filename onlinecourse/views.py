@@ -1,7 +1,8 @@
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 # <HINT> Import any new Models here
-from .models import Course, Enrollment
+from .models import Course, Enrollment, Question, Choice, Submission
+
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
@@ -111,17 +112,43 @@ def enroll(request, course_id):
          # Add each selected choice object to the submission object
          # Redirect to show_exam_result with the submission id
 #def submit(request, course_id):
+def submit(request, course_id):
+    if request.method == 'POST':
+        # Get the current user
+        current_user = request.user
 
+        # Get the course object
+        course = Course.objects.get(id=course_id)
+
+        # Get the associated enrollment object
+        enrollment = Enrollment.objects.get(user=current_user, course=course)
+
+        # Create a new submission object referring to the enrollment
+        submission = Submission.objects.create(enrollment=enrollment)
+
+        # Collect selected choice ids from the HTTP request
+        selected_choice_ids = request.POST.getlist('selected_choices')
+
+        # Add each selected choice object to the submission
+        for choice_id in selected_choice_ids:
+            choice = Choice.objects.get(id=choice_id)
+            submission.choices.add(choice)
+
+        # Redirect to show_exam_result view with the submission id
+        return redirect('show_exam_result', submission_id=submission.id)
+
+    else:
+        return HttpResponse("Method not allowed")
 
 # <HINT> A example method to collect the selected choices from the exam form from the request object
-#def extract_answers(request):
-#    submitted_anwsers = []
-#    for key in request.POST:
-#        if key.startswith('choice'):
-#            value = request.POST[key]
-#            choice_id = int(value)
-#            submitted_anwsers.append(choice_id)
-#    return submitted_anwsers
+def extract_answers(request):
+   submitted_anwsers = []
+   for key in request.POST:
+       if key.startswith('choice'):
+            value = request.POST[key]
+            choice_id = int(value)
+            submitted_anwsers.append(choice_id)
+   return submitted_anwsers
 
 
 # <HINT> Create an exam result view to check if learner passed exam and show their question results and result for each question,
@@ -130,7 +157,38 @@ def enroll(request, course_id):
         # Get the selected choice ids from the submission record
         # For each selected choice, check if it is a correct answer or not
         # Calculate the total score
-#def show_exam_result(request, course_id, submission_id):
+def show_exam_result(request, course_id, submission_id):
+    # Get the course object and submission object based on their IDs
+    course = get_object_or_404(Course, id=course_id)
+    submission = get_object_or_404(Submission, id=submission_id)
+
+    # Get the selected choice ids from the submission
+    selected_choice_ids = submission.choices.values_list('id', flat=True)
+
+    # Initialize variables to calculate the total score and number of correct answers
+    total_score = 0
+    correct_answers = 0
+
+    # Check each selected choice to calculate the total score and correct answers
+    for choice_id in selected_choice_ids:
+        choice = get_object_or_404(Choice, id=choice_id)
+        if choice.is_correct:
+            total_score += choice.question.grade_point
+            correct_answers += 1
+
+    # Calculate the passing score based on the total number of questions in the course
+    passing_score = (correct_answers / course.question_set.count()) * 100
+
+    # Add the course, selected choice ids, total score, and passing score to context
+    context = {
+        'course': course,
+        'selected_choice_ids': selected_choice_ids,
+        'total_score': total_score,
+        'passing_score': passing_score,
+    }
+
+    # Render the HTML page with the context
+    return render(request, 'onlinecourse/exam_result.html', context)
 
 
 
